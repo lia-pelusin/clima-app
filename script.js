@@ -1,163 +1,131 @@
-// ============================================
-// CONFIGURACIÓN
-// ============================================
-// REEMPLAZA ESTA API KEY CON LA TUYA
-const API_KEY = 'T7d5f939396893ab00e44ac52b3cfedbf';
+const API_KEY = '695b818cbfd29dd58a03aaa37c279d2d';
 const API_URL = 'https://api.openweathermap.org/data/2.5/weather';
+const API_FORECAST = 'https://api.openweathermap.org/data/2.5/forecast';
 
-// ============================================
-// REFERENCIAS AL DOM
-// ============================================
 const formulario = document.getElementById('formulario');
 const inputCiudad = document.getElementById('inputCiudad');
 const resultado = document.getElementById('resultado');
 const estado = document.getElementById('estado');
+const btnUbicacion = document.getElementById('btnUbicacion');
+const pronosticoCont = document.getElementById('pronostico');
+const historialCont = document.getElementById('historial');
+const btnTema = document.getElementById('btnTema');
 
-// ============================================
-// FUNCIÓN PRINCIPAL: CONSULTAR CLIMA
-// ============================================
-async function consultarClima(ciudad) {
-  // Mostrar estado de carga
-  estado.textContent = '⏳ Consultando el clima...';
+let historial = JSON.parse(localStorage.getItem('historial')) || [];
+let ultimoClima = null;
+
+function guardarEnHistorial(ciudad){
+  historial = historial.filter(c => c.toLowerCase()!== ciudad.toLowerCase());
+  historial.unshift(ciudad);
+  if(historial.length > 5) historial.pop();
+  localStorage.setItem('historial', JSON.stringify(historial));
+  mostrarHistorial();
+}
+function mostrarHistorial(){
+  if(historial.length === 0){ historialCont.innerHTML=''; return; }
+  historialCont.innerHTML = historial.map(c => `<button class="historial-item" onclick="consultarClima('${c}')">📍 ${c}</button>`).join('') + `<button class="btn-limpiar" onclick="limpiarHistorial()">🗑️</button>`;
+}
+function limpiarHistorial(){ historial=[]; localStorage.removeItem('historial'); mostrarHistorial(); }
+
+async function consultarClima(ciudad){
+  estado.textContent='⏳ Consultando el clima...';
   resultado.classList.remove('visible');
-
-  try {
-    // Codificar la ciudad para la URL
-    const ciudadCodificada = encodeURIComponent(ciudad);
-    
-    // Construir la URL con parámetros
-    const url = `${API_URL}?q=${ciudadCodificada}&appid=${API_KEY}&units=metric&lang=es`;
-
-    // Hacer la petición
-    const respuesta = await fetch(url);
-
-    // Verificar si la respuesta fue exitosa
-    if (!respuesta.ok) {
-      if (respuesta.status === 404) {
-        throw new Error('Ciudad no encontrada');
-      } else if (respuesta.status === 401) {
-        throw new Error('API Key inválida o no activada');
-      } else {
-        throw new Error(`Error en la petición: ${respuesta.status}`);
-      }
-    }
-
-    // Convertir a JSON
-    const datos = await respuesta.json();
-
-    // Mostrar los datos
+  try{
+    const url=`${API_URL}?q=${encodeURIComponent(ciudad)}&appid=${API_KEY}&units=metric&lang=es`;
+    const res=await fetch(url);
+    if(!res.ok){ if(res.status===404) throw new Error('Ciudad no encontrada'); throw new Error('Error '+res.status); }
+    const datos=await res.json();
     mostrarClima(datos);
-    estado.textContent = '✅ Datos actualizados correctamente.';
-  } catch (error) {
-    console.error('Error:', error);
-    estado.textContent = `❌ ${error.message}. Intenta con otra ciudad.`;
-    resultado.classList.remove('visible');
-  }
+    consultarPronostico(ciudad);
+    guardarEnHistorial(datos.name);
+    estado.textContent='✅ Datos actualizados correctamente.';
+  }catch(e){ estado.textContent=`❌ ${e.message}`; }
 }
 
-// ============================================
-// FUNCIÓN: MOSTRAR EL CLIMA EN EL DOM
-// ============================================
-function mostrarClima(datos) {
-  // Extraer datos usando destructuring y opcional chaining para evitar fallos
-  const ciudad = datos.name;
-  const pais = datos.sys?.country ?? '';
-  const temperatura = Math.round(datos.main?.temp ?? 0);
-  const sensacion = Math.round(datos.main?.feels_like ?? 0);
-  const humedad = datos.main?.humidity ?? 0;
-  const presion = datos.main?.pressure ?? 0;
-  const viento = datos.wind?.speed ?? 0;
-
-  // Acceso seguro al arreglo de clima
-  const condicionMet = datos.weather?.[0];
-  const descripcion = condicionMet?.description ?? 'Sin descripción';
-  const icono = condicionMet?.icon ?? '01d';
-  const iconoUrl = `https://openweathermap.org/img/wn/${icono}@2x.png`;
-
-  // Construir el HTML del resultado
-  resultado.innerHTML = `
-    <div class="ciudad">${ciudad}</div>
-    <div class="pais">${pais}</div>
-    <img src="${iconoUrl}" alt="${descripcion}" class="icono-clima">
-    <div class="temperatura">${temperatura}°C</div>
-    <div class="descripcion">${descripcion}</div>
+function mostrarClima(datos){
+  ultimoClima=datos;
+  resultado.innerHTML=`
+    <div class="ciudad">${datos.name}</div>
+    <div class="pais">${datos.sys.country}</div>
+    <img src="https://openweathermap.org/img/wn/${datos.weather[0].icon}@2x.png" class="icono-clima" alt="${datos.weather[0].description}">
+    <div class="temperatura">${Math.round(datos.main.temp)}°C</div>
+    <div class="descripcion">${datos.weather[0].description}</div>
     <div class="detalles">
-      <div class="detalle">
-        <div class="etiqueta">Sensación</div>
-        <div class="valor">${sensacion}°C</div>
-      </div>
-      <div class="detalle">
-        <div class="etiqueta">Humedad</div>
-        <div class="valor">${humedad}%</div>
-      </div>
-      <div class="detalle">
-        <div class="etiqueta">Presión</div>
-        <div class="valor">${presion} hPa</div>
-      </div>
-      <div class="detalle">
-        <div class="etiqueta">Viento</div>
-        <div class="valor">${viento} m/s</div>
-      </div>
+      <div class="detalle"><div class="etiqueta">Sensación</div><div class="valor">${Math.round(datos.main.feels_like)}°C</div></div>
+      <div class="detalle"><div class="etiqueta">Humedad</div><div class="valor">${datos.main.humidity}%</div></div>
+      <div class="detalle"><div class="etiqueta">Presión</div><div class="valor">${datos.main.pressure} hPa</div></div>
+      <div class="detalle"><div class="etiqueta">Viento</div><div class="valor">${datos.wind.speed} m/s</div></div>
     </div>
+    <button class="btn-whatsapp" onclick="compartirWhatsApp()">📲 Compartir en WhatsApp</button>
   `;
-
-  // Mostrar el resultado
   resultado.classList.add('visible');
-
-  // Cambiar el fondo según el clima
-  if (condicionMet?.main) {
-    cambiarFondoSegunClima(condicionMet.main);
-  }
+  cambiarFondo(datos.weather[0].main);
+}
+function cambiarFondo(clima){
+  document.body.classList.remove('clima-soleado','clima-nublado','clima-lluvioso','clima-nieve');
+  const c=clima.toLowerCase();
+  if(c.includes('clear')) document.body.classList.add('clima-soleado');
+  else if(c.includes('cloud')) document.body.classList.add('clima-nublado');
+  else if(c.includes('rain')||c.includes('drizzle')||c.includes('thunder')) document.body.classList.add('clima-lluvioso');
+  else if(c.includes('snow')) document.body.classList.add('clima-nieve');
 }
 
-// ============================================
-// FUNCIÓN: CAMBIAR FONDO SEGÚN EL CLIMA
-// ============================================
-function cambiarFondoSegunClima(clima) {
-  // Remover clases anteriores
-  document.body.classList.remove('clima-soleado', 'clima-nublado', 'clima-lluvioso', 'clima-nieve');
-
-  // Agregar la clase según el clima
-  const climaLower = clima.toLowerCase();
-
-  if (climaLower.includes('clear')) {
-    document.body.classList.add('clima-soleado');
-  } else if (climaLower.includes('cloud')) {
-    document.body.classList.add('clima-nublado');
-  } else if (
-    climaLower.includes('rain') ||
-    climaLower.includes('drizzle') ||
-    climaLower.includes('thunderstorm')
-  ) {
-    document.body.classList.add('clima-lluvioso');
-  } else if (climaLower.includes('snow')) {
-    document.body.classList.add('clima-nieve');
-  } else {
-    // Caso por defecto para Atmosfera (Mist, Fog, Haze, Dust, etc.)
-    document.body.classList.add('clima-nublado');
-  }
-}
-
-// ============================================
-// EVENTO DEL FORMULARIO
-// ============================================
-formulario.addEventListener('submit', (e) => {
-  e.preventDefault(); // Evitar recarga de página
-
-  const ciudad = inputCiudad.value.trim();
-
-  if (!ciudad) {
-    estado.textContent = '⚠️ Escribe el nombre de una ciudad.';
-    return;
-  }
-
+formulario.addEventListener('submit', e=>{
+  e.preventDefault();
+  const ciudad=inputCiudad.value.trim();
+  if(!ciudad){ estado.textContent='⚠️ Escribe el nombre de una ciudad.'; return; }
   consultarClima(ciudad);
+  inputCiudad.value='';
 });
 
-// ============================================
-// MENSAJE INICIAL Y CARGA OPCIONAL
-// ============================================
-estado.textContent = 'Escribe una ciudad y presiona "Consultar".';
+async function consultarClimaPorCoords(lat,lon){
+  estado.textContent='📍 Obteniendo ubicación...';
+  try{
+    const datos=await (await fetch(`${API_URL}?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric&lang=es`)).json();
+    mostrarClima(datos);
+    consultarPronosticoPorCoords(lat,lon);
+    guardarEnHistorial(datos.name);
+    estado.textContent='📍 Clima de tu ubicación actual';
+  }catch(e){ estado.textContent='❌ '+e.message; }
+}
+btnUbicacion.addEventListener('click',()=>{
+  if(!navigator.geolocation){ estado.textContent='Tu navegador no soporta GPS'; return; }
+  estado.textContent='📍 Buscando ubicación...';
+  navigator.geolocation.getCurrentPosition(p=>consultarClimaPorCoords(p.coords.latitude,p.coords.longitude),()=>estado.textContent='❌ Activa el permiso de ubicación');
+});
 
-// Descomenta si deseas cargar una ciudad por defecto al iniciar:
-// consultarClima('Mexico City');
+async function consultarPronostico(ciudad){
+  try{
+    const datos=await (await fetch(`${API_FORECAST}?q=${encodeURIComponent(ciudad)}&appid=${API_KEY}&units=metric&lang=es`)).json();
+    mostrarPronostico(datos);
+  }catch(e){}
+}
+async function consultarPronosticoPorCoords(lat,lon){
+  try{
+    const datos=await (await fetch(`${API_FORECAST}?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric&lang=es`)).json();
+    mostrarPronostico(datos);
+  }catch(e){}
+}
+function mostrarPronostico(datos){
+  pronosticoCont.innerHTML='<h3>📅 Pronóstico 5 días</h3>';
+  datos.list.filter((_,i)=>i%8===0).forEach(dia=>{
+    const fecha=new Date(dia.dt*1000).toLocaleDateString('es-MX',{weekday:'short',day:'numeric'});
+    pronosticoCont.innerHTML+=`<div class="dia-pronostico"><p><b>${fecha}</b></p><img src="https://openweathermap.org/img/wn/${dia.weather[0].icon}.png"><p>${Math.round(dia.main.temp)}°C</p><small>${dia.weather[0].description}</small></div>`;
+  });
+}
+
+const temaGuardado=localStorage.getItem('temaClima');
+if(temaGuardado==='oscuro'){ document.body.classList.add('modo-oscuro'); btnTema.textContent='☀️ Modo Claro'; }
+btnTema.addEventListener('click',()=>{
+  document.body.classList.toggle('modo-oscuro');
+  if(document.body.classList.contains('modo-oscuro')){ localStorage.setItem('temaClima','oscuro'); btnTema.textContent='☀️ Modo Claro'; }
+  else{ localStorage.setItem('temaClima','claro'); btnTema.textContent='🌙 Modo Oscuro'; }
+});
+
+function compartirWhatsApp(){
+  if(!ultimoClima) return;
+  const texto=`🌤️ El clima en ${ultimoClima.name} es ${Math.round(ultimoClima.main.temp)}°C, ${ultimoClima.weather[0].description}. Humedad ${ultimoClima.main.humidity}% - App de Diana`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`,'_blank');
+}
+
+mostrarHistorial();
